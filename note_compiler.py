@@ -10,6 +10,10 @@ from typing import List, Tuple, Dict, Any, Optional
 @dataclass
 class ProcessingConfig:
     auto_perspective: bool = True
+    illumination_method: str = "division"
+    bg_kernel_size: int = 25
+    gamma: float = 1.0
+    sharpen_boost: float = 0.35
     page_size: str = "A4"
 
 @dataclass
@@ -94,3 +98,44 @@ def stage_1_rectify(image, auto=True):
                 dst = np.float32([[0, 0], [w_box - 1, 0], [w_box - 1, h_box - 1], [0, h_box - 1]])
                 return cv2.warpPerspective(image, cv2.getPerspectiveTransform(pts, dst), (w_box, h_box), flags=cv2.INTER_CUBIC)
     return image
+
+def stage_2_normalize(image, method="division", bg_ksize=25, gamma=1.0):
+    if method == "homomorphic":
+        out = []
+        for ch in cv2.split(image):
+            h, w = ch.shape
+            img_log = np.log1p(ch.astype(np.float32))
+            fft = np.fft.fftshift(np.fft.fft2(img_log))
+            u, v = np.meshgrid(np.arange(h) - h / 2.0, np.arange(w) - w / 2.0, indexing="ij")
+            h_filt = (1.8 - 0.5) * (1.0 - np.exp(-(u**2 + v**2) / (2.0 * 40.0**2))) + 0.5
+            inv = np.real(np.fft.ifft2(np.fft.ifftshift(fft * h_filt)))
+            exp_ch = np.expm1(inv)
+            p1, p99 = np.percentile(exp_ch, 1), np.percentile(exp_ch, 99)
+            out.append(np.clip((exp_ch - p1) / (p99 - p1 + 1e-6) * 255.0, 0, 255).astype(np.uint8))
+        norm = cv2.merge(out)
+    elif method == "hybrid":
+        div = stage_2_normalize(image, method="division", bg_ksize=bg_ksize, gamma=1.0)
+        norm = stage_2_normalize(div, method="homomorphic", bg_ksize=bg_ksize, gamma=1.0)
+    else:
+        k = bg_ksize if bg_ksize % 2 == 1 else bg_ksize + 1
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (k, k))
+        out = []
+        for ch in cv2.split(image):
+            bg = cv2.GaussianBlur(cv2.dilate(ch, kernel), (k, k), 0)
+            div = (ch.astype(np.float32) / np.maximum(bg.astype(np.float32), 1.0)) * 255.0
+            out.append(np.clip(div, 0, 255).astype(np.uint8))
+        norm = cv2.merge(out)
+
+    if abs(gamma - 1.0) > 0.02:
+        table = np.array([((i / 255.0) ** (1.0 / gamma)) * 255 for i in range(256)]).astype("uint8")
+        norm = cv2.LUT(norm, table)
+    return norm
+
+def stage_4_denoise_sharpen(image, median_k=1, boost=0.35):
+    if boost > 0.05:
+        blurred = cv2.GaussianBlur(image, (0, 0), 1.0)
+        sharpened = np.clip(cv2.addWeighted(image, 1.0 + boost, blurred, -boost, 0), 0, 255).astype(np.uint8)
+    else:
+        sharpened = image
+    sharpened[np.all(sharpened >= 244, axis=2)] = [255, 255, 255]
+    return sharpened
