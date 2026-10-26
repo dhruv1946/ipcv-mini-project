@@ -1,4 +1,4 @@
-﻿import os
+import os
 import sys
 import time
 import cv2
@@ -12,7 +12,11 @@ class ProcessingConfig:
     auto_perspective: bool = True
     illumination_method: str = "division"
     bg_kernel_size: int = 25
+    white_point: float = 210.0
+    black_point: float = 60.0
     gamma: float = 1.0
+    mode: str = "color_preserve"
+    color_saturation_boost: float = 1.35
     sharpen_boost: float = 0.35
     page_size: str = "A4"
 
@@ -130,6 +134,19 @@ def stage_2_normalize(image, method="division", bg_ksize=25, gamma=1.0):
         table = np.array([((i / 255.0) ** (1.0 / gamma)) * 255 for i in range(256)]).astype("uint8")
         norm = cv2.LUT(norm, table)
     return norm
+
+def stage_3_color_preserve(image, mode="color_preserve", sat_boost=1.35, white_pt=208.0, black_pt=60.0):
+    stretched = np.clip((image.astype(np.float32) - black_pt) / (white_pt - black_pt) * 255.0, 0, 255).astype(np.uint8)
+
+    if mode == "black_and_white":
+        gray = cv2.cvtColor(stretched, cv2.COLOR_BGR2GRAY)
+        b = cv2.threshold(gray, 210, 255, cv2.THRESH_BINARY)[1]
+        return cv2.merge([b, b, b])
+
+    hsv = cv2.cvtColor(stretched, cv2.COLOR_BGR2HSV)
+    h, s, v = cv2.split(hsv)
+    s = np.clip(s.astype(np.float32) * sat_boost, 0, 255).astype(np.uint8)
+    return cv2.cvtColor(cv2.merge([h, s, v]), cv2.COLOR_HSV2BGR)
 
 def stage_4_denoise_sharpen(image, median_k=1, boost=0.35):
     if boost > 0.05:
