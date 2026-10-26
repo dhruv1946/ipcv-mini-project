@@ -21,6 +21,12 @@ class ProcessingConfig:
     compress_pdf: bool = True
     page_size: str = "A4"
     jpeg_quality: int = 90
+@dataclass
+class StageResult:
+    image: np.ndarray
+    stage_name: str
+    execution_time_ms: float
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 @dataclass
 class PipelineResult:
@@ -185,7 +191,7 @@ class NotePDFCompiler:
     compile_pdf = staticmethod(stage_5_compile_pdf)
 
 class NoteCompilerPipeline:
-    def _init_(self, config: Optional[ProcessingConfig] = None):
+    def __init__(self, config: Optional[ProcessingConfig] = None):
         self.config = config or ProcessingConfig()
 
     def stage_1_rectify_perspective(self, img):
@@ -239,5 +245,5 @@ def main():
     stats = stage_5_compile_pdf(processed, out_pdf)
     print(f"Compiled PDF: {stats['output_path']} ({stats['total_pages']} pages, {stats['pdf_size_kb']} KB, {stats['compression_ratio_pct']}% saved)")
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     main()

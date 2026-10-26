@@ -15,3 +15,30 @@ A computer vision tool that transforms photos of handwritten notes, whiteboards,
 
 ```bash
 pip install -r requirements.txt
+```
+
+## Usage
+
+### 1. Command-Line Interface
+
+Process raw camera photos or generate a synthetic note:
+
+```bash
+python note_compiler.py
+```
+
+### 2. Streamlit Web Application
+
+Launch the interactive web interface:
+
+```bash
+python -m streamlit run app.py
+```
+
+### 3. Automated Test Suite
+
+Run unit and integration tests across all pipeline stages:
+
+```bash
+python -m unittest test_pipeline.py
+```
